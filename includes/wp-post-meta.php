@@ -1,6 +1,6 @@
 <?php
 
-namespace narwhal\WordPress;
+namespace Narwhal\WordPress;
 
 /**
  * Class PostMeta

@@ -13,16 +13,13 @@
 
 namespace Narwhal\WordPress;
 
-use dfwood\WordPress\PostDuplication;
-use dfwood\WordPress\PostRevisionMeta;
-
-require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/includes/wp-post-meta.php';
+require __DIR__ . '/includes/wp-post-revision-meta.php';
+require __DIR__ . '/includes/wp-post-duplication.php';
 
 /**
  * Class ContentRevisions
- * @uses \dfwood\WordPress\PostDuplication
- * @uses \dfwood\WordPress\PostRevisionMeta
- * @package dfwood\WordPress
+ * @package Narwhal\WordPress
  */
 class ContentRevisions {
 

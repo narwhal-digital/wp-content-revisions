@@ -1,0 +1,32 @@
+{
+  "name": "narwhal/wp-content-revisions",
+  "description": "Allows creation of content revisions which allow you to save and preview updates to content without publishing.",
+  "license": "GPLv3",
+  "type": "wordpress-plugin",
+  "homepage": "https://github.com/narwhal-digital/wp-content-revisions",
+  "authors": [
+    {
+      "name": "Narwhal.Digital",
+      "homepage": "https://narwhal.digital/"
+    },
+    {
+      "name": "David Wood",
+      "email": "david@davidwood.ninja",
+      "homepage": "https://davidwood.ninja/"
+    }
+  ],
+  "support": {
+    "source": "https://github.com/narwhal-digital/wp-content-revisions"
+  },
+  "scripts": {
+    "package-build": [
+      "if [ ! -d \"includes\" ]; then mkdir includes; fi",
+      "composer init -d includes -n --require dfwood/wp-post-duplication:@stable --require dfwood/wp-post-revision-meta:@stable",
+      "composer install -d includes",
+      "sed 's/namespace dfwood/namespace narwhal/g' includes/vendor/dfwood/wp-post-meta/PostMeta.php > includes/wp-post-meta.php",
+      "sed 's/namespace dfwood/namespace narwhal/g' includes/vendor/dfwood/wp-post-duplication/PostDuplication.php > includes/wp-post-duplication.php",
+      "sed 's/namespace dfwood/namespace narwhal/g' includes/vendor/dfwood/wp-post-revision-meta/PostRevisionMeta.php > includes/wp-post-revision-meta.php",
+      "rm -R includes/composer.* includes/vendor"
+    ]
+  }
+}

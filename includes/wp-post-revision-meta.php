@@ -18,73 +18,70 @@ class PostRevisionMeta {
 	const META_KEY = '_post_revision_saved_metadata';
 
 	/**
-	 * Initializes core functionality for this module.
+	 * Helper function to add the action to allow restoring post meta on revision restore. Won't add itself more
+	 * than once.
 	 *
-	 * NOTE: If you do NOT call this, it is recommended to at least add the `wp_restore_post_revision` action. This
-	 * will allow post meta data restoration to happen automatically. Alternatively, consider calling with `true` as
-	 * the param value.
-	 *
-	 * @param bool $restoreOnly When set to true, only the restore action will be added.
+	 * @return bool True if action was added, false if already added.
 	 */
-	public static function initialize( $restoreOnly = false ) {
-		if ( ! $restoreOnly ) {
-			add_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ] );
+	public static function setupRestoreFromRevision() {
+		if ( false === has_action( 'wp_restore_post_revision', [ __CLASS__, '_maybeRestoreMetaWithRevision' ] ) ) {
+			return add_action( 'wp_restore_post_revision', [ __CLASS__, '_maybeRestoreMetaWithRevision' ], 10, 2 );
 		}
 
-		add_action( 'wp_restore_post_revision', [ __CLASS__, '_maybeRestoreMetaWithRevision' ], 10, 2 );
-
-		// TODO: Add notice of backed up meta on the revision compare/restore screen?
+		return false;
 	}
 
 	/**
-	 * Creates a revision of the provided post, even if it is identical to the previous revision. Will also save post
-	 * meta with the revision by default.
+	 * Helper function to add the action to allow backing up post meta with a revision. Won't add itself more than once.
 	 *
-	 * @param int $postId ID of the post to create a revision of.
-	 * @param bool $includePostMeta If true (default), post meta will be saved with the revision.
+	 * @return bool True if action was added, false if already added.
 	 */
-	public static function createExactRevision( $postId, $includePostMeta = true ) {
-		$metaActionAttached = false;
-		$metaActionPriority = has_action( '_wp_put_post_revision', '_saveMetaWithRevision' );
-		if ( false !== $metaActionPriority ) {
-			$metaActionAttached = true;
+	public static function setupBackupToRevision() {
+		if ( false === has_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ] ) ) {
+			return add_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ] );
 		}
 
-		// Add filter so we save a revision regardless of changes.
+		return false;
+	}
+
+	/**
+	 * Creates an exact revision of a post, including all post meta.
+	 *
+	 * @param int $postId
+	 */
+	public static function createExactRevisionWithMeta( $postId ) {
+		// Setup backup hooks.
+		$addedBackup = self::setupBackupToRevision();
+
+		// Ensure we create a revision even if nothing has changed.
 		add_filter( 'wp_save_post_revision_check_for_changes', '__return_false', 99 );
 
-		// Verify our meta save actions reflect the requested action.
-		if ( $includePostMeta && ! $metaActionAttached ) {
-			add_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ] );
-		} elseif ( ! $includePostMeta && $metaActionAttached ) {
-			remove_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ], $metaActionPriority );
-		}
-		// Trigger the creation of our revision.
+		// Trigger creation of revision.
 		wp_save_post_revision( $postId );
 
+		// Remove the filter so other revisions are created properly.
 		remove_filter( 'wp_save_post_revision_check_for_changes', '__return_false', 99 );
 
-		// Reset our meta save action to the state is was in before this method was called.
-		if ( $includePostMeta && ! $metaActionAttached ) {
+		// If we actually added our action hook, remove it.
+		if ( $addedBackup ) {
 			remove_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ] );
-		} elseif ( ! $includePostMeta && $metaActionAttached ) {
-			// Ensure this is reattached with the same priority.
-			add_action( '_wp_put_post_revision', [ __CLASS__, '_saveMetaWithRevision' ], $metaActionPriority );
 		}
 	}
 
 	/**
 	 * Copies post meta from the post to the revision being saved.
 	 *
-	 * @internal Typically called only by a WordPress action.
+	 * Typically called only by a WordPress action. Intended to work with the `_wp_put_post_revision` action.
 	 *
 	 * @param int $revisionId ID of the revision.
 	 */
 	public static function _saveMetaWithRevision( $revisionId ) {
 		$revision = get_post( $revisionId );
-		if ( $revision ) {
-			$postId = $revision->post_parent;
-			$excludeKeys = self::_getBaseExcludeKeys();
+		if ( $revision && ( $postId = wp_is_post_revision( $revision ) )
+		     // Prevent this from running twice on the same action.
+		     && add_metadata( 'post', $revisionId, self::META_KEY, true, true ) ) {
+			$excludeKeys = PostMeta::WP_LOCK_KEYS;
+			$excludeKeys[] = self::META_KEY;
 			/**
 			 * Filters meta keys to exclude from copying operations. All non-excluded keys are copied from the post to
 			 * the revision.
@@ -94,8 +91,7 @@ class PostRevisionMeta {
 			 * @param int $revisionId The ID of the revision being restored.
 			 */
 			$excludeKeys = apply_filters( __CLASS__ . '::saveRevisionMetaExcludeKeys', $excludeKeys, $postId, $revisionId );
-			self::_copyAllMeta( $postId, $revisionId, $excludeKeys );
-			add_metadata( 'post', $revisionId, self::META_KEY, true );
+			PostMeta::copyAllToRevision( $postId, $revisionId, $excludeKeys );
 		}
 	}
 
@@ -103,23 +99,15 @@ class PostRevisionMeta {
 	 * Possibly restores post meta with a revision if our post meta is associated with the revision. Result is
 	 * filterable.
 	 *
-	 * @internal Typically called only by a WordPress action.
+	 * Typically called only by a WordPress action. Intended to work with the `wp_restore_post_revision` action.
 	 *
 	 * @param int $postId
 	 * @param int $revisionId
 	 */
 	public static function _maybeRestoreMetaWithRevision( $postId, $revisionId ) {
-		if ( metadata_exists( 'post', $revisionId, self::META_KEY )
-		     /**
-		      * Allows rejecting post meta restoration. Post meta will only ever be restored if this returns true
-		      * (default) AND our post meta exists on the revision.
-		      *
-		      * @param bool $restoreMeta Determines if we should restore post meta or not.
-		      * @param int $postId The post ID we are restoring post meta to.
-		      * @param int $revisionId The ID of the revision being restored.
-		      */
-		     && true === apply_filters( __CLASS__ . '::restoreRevisionPostMeta', $restoreMeta = true, $postId, $revisionId ) ) {
-			$excludeKeys = self::_getBaseExcludeKeys();
+		if ( metadata_exists( 'post', $revisionId, self::META_KEY ) ) {
+			$excludeKeys = PostMeta::WP_LOCK_KEYS;
+			$excludeKeys[] = self::META_KEY;
 			/**
 			 * Filters meta keys to exclude from deletion and copying operations.
 			 *
@@ -131,73 +119,43 @@ class PostRevisionMeta {
 			 * @param int $revisionId The ID of the revision being restored.
 			 */
 			$excludeKeys = apply_filters( __CLASS__ . '::restoreRevisionMetaExcludeKeys', $excludeKeys, $postId, $revisionId );
-			self::_deleteAllMeta( $postId, $excludeKeys );
-			self::_copyAllMeta( $revisionId, $postId, $excludeKeys );
+			PostMeta::deleteAll( $postId, $excludeKeys );
+			PostMeta::copyAll( $revisionId, $postId, $excludeKeys );
 		}
 	}
 
 	/**
-	 * Returns the post meta keys that should always be ignored when copying/restoring post meta.
+	 * Copies all non-excluded post meta to specified revision from its parent post. Adds an additional bit of post
+	 * meta to revision to track that we have saved post meta to the revision.
 	 *
-	 * @internal
-	 *
-	 * @return array
+	 * @param int $revisionId ID of the revision to save post meta to.
+	 * @param array $exclude Meta keys to exclude from saving to the revision.
 	 */
-	private static function _getBaseExcludeKeys() {
-		$keys = [
-			// Don't touch WordPress' post lock meta.
-			'_edit_lock',
-			'_edit_last',
-			// Don't touch our own post meta.
-			self::META_KEY,
-		];
-
-		return $keys;
-	}
-
-	/**
-	 * Copies all non-excluded meta values, by key, from one post to another.
-	 *
-	 * @internal
-	 *
-	 * @param int $originalId ID of the post to copy meta values from.
-	 * @param int $destinationId ID of the post to copy meta values to.
-	 * @param array $exclude Array of meta keys to exclude from copying.
-	 */
-	private static function _copyAllMeta( $originalId, $destinationId, array $exclude = [] ) {
-		$meta = get_post_meta( $originalId );
-		foreach ( $meta as $key => $values ) {
-			if ( ! in_array( $key, $exclude, true ) ) {
-				// Check and see if there is only 1 value for this key.
-				if ( 1 === count( $values ) ) {
-					// If only 1 value, allow an existing value (if any) to be overwritten.
-					// Use `reset()` to ensure the correct value is retrieved.
-					update_metadata( 'post', $destinationId, $key, maybe_unserialize( reset( $values ) ) );
-				} else {
-					// Otherwise, use add_metadata as there are multiple values with the same key.
-					foreach ( $values as $value ) {
-						add_metadata( 'post', $destinationId, $key, maybe_unserialize( $value ) );
-					}
-				}
-			}
+	public static function savePostMetaToRevision( $revisionId, array $exclude = [] ) {
+		$revision = get_post( $revisionId );
+		if ( $revision && ( $postId = wp_is_post_revision( $revision ) )
+		     // Prevent this from running twice on the same action.
+		     && add_metadata( 'post', $revisionId, self::META_KEY, true, true ) ) {
+			// Ensure our meta key isn't touched.
+			$exclude[] = self::META_KEY;
+			PostMeta::copyAllToRevision( $postId, $revisionId, $exclude );
 		}
 	}
 
 	/**
-	 * Deletes all post meta values on the provided post. Does NOT delete
-	 * any meta values that have a matching key in `$excludedKeys`.
+	 * Deletes all non-excluded post meta on destination post and copies all non-excluded meta from specified revision
+	 * to destination post.
 	 *
-	 * @internal
-	 *
-	 * @param int $postId ID of the post to delete all post meta for.
-	 * @param array $excludeKeys Array of meta keys to exclude from deletion.
+	 * @param int $revisionId Post ID of revision to restore meta from.
+	 * @param int $postId Post ID to restore post meta to.
+	 * @param array $exclude Meta keys to exclude from restore process.
 	 */
-	private static function _deleteAllMeta( $postId, array $excludeKeys = [] ) {
-		$metaKeys = get_post_custom_keys( $postId );
-		foreach ( $metaKeys as $key ) {
-			if ( ! in_array( $key, $excludeKeys, true ) ) {
-				delete_metadata( 'post', $postId, $key );
-			}
+	public static function restorePostMetaFromRevision( $revisionId, $postId, array $exclude = [] ) {
+		if ( metadata_exists( 'post', $revisionId, self::META_KEY ) ) {
+			// Ensure our meta key isn't touched.
+			$exclude[] = self::META_KEY;
+			PostMeta::deleteAll( $postId, $exclude );
+			PostMeta::copyAll( $revisionId, $postId, $exclude );
 		}
 	}
 

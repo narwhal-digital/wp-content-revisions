@@ -26,7 +26,7 @@ class PostDuplication {
 		// WordPress edit lock meta, we don't want to touch any of this!
 		$metaExclude = PostMeta::WP_LOCK_KEYS;
 		if ( ! $post ) {
-			return new \WP_Error( 'invalid_post_id', 'Invalid post ID supplied for `$postId`.', [ 'status' => 403 ] );
+			return new \WP_Error( 'invalid_post_id', esc_html__( 'Invalid post ID supplied for `$postId`.', 'dfwood-wp-post-duplication' ), [ 'status' => 403 ] );
 		}
 
 		if ( ! empty( $args['ID'] ) ) {
@@ -35,7 +35,7 @@ class PostDuplication {
 				$clearMetaExclude = apply_filters( __CLASS__ . '::preDuplicateMetaDelete', $metaExclude, $overwritePost, $post );
 				PostMeta::deleteAll( $args['ID'], $clearMetaExclude );
 			} else {
-				return new \WP_Error( 'invalid_post_id', 'Invalid post ID supplied in `$args` array.', [ 'status' => 403 ] );
+				return new \WP_Error( 'invalid_post_id', esc_html__( 'Invalid post ID supplied in `$args` array.', 'dfwood-wp-post-duplication' ), [ 'status' => 403 ] );
 			}
 		}
 

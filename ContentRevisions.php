@@ -41,6 +41,9 @@ class ContentRevisions {
 		add_filter( __NAMESPACE__ . '\PostRevisionMeta::restoreRevisionMetaExcludeKeys', $excludeMetaKeys );
 
 		if ( is_admin() ) {
+			require __DIR__ . '/includes/wp-transient-admin-notices.php';
+			new TransientAdminNotices( __CLASS__ . get_current_user_id() );
+
 			// Handle creation of content revisions.
 			add_action( 'admin_post_' . self::CREATE_REVISION_ACTION, [ __CLASS__, '_createContentRevision' ] );
 
@@ -138,8 +141,15 @@ class ContentRevisions {
 			if ( $originalPost ) {
 				// Remove our action
 				remove_action( 'transition_post_status', [ __CLASS__, '_maybePublishContentRevision' ] );
-				// Create revision of our original as a backup.
-				PostRevisionMeta::createExactRevisionWithMeta( $originalPostId );
+				// Backup original post meta to latest revision.
+				$revisions = wp_get_post_revisions( $originalPostId, [
+					'posts_per_page' => 1,
+					'found_rows'     => false,
+					'fields'         => 'ids',
+				] );
+				if ( $revisions && 1 === count( $revisions ) ) {
+					PostRevisionMeta::savePostMetaToRevision( reset( $revisions ), PostMeta::WP_LOCK_KEYS );
+				}
 				// Copy the content from content revision to original post (including post meta).
 				$args = [
 					'ID'            => $originalPostId,
@@ -159,10 +169,14 @@ class ContentRevisions {
 				// Re-add our action.
 				add_action( 'transition_post_status', [ __CLASS__, '_maybePublishContentRevision' ], 10, 3 );
 
-				// TODO: Add success message to show after redirect!
-				// Redirect to the correct post type.
-				wp_safe_redirect( get_edit_post_link( $originalPostId, '' ) );
-				exit();
+				// If we are doing cron, we don't want to show an admin notice or redirect to an admin page.
+				if ( ! wp_doing_cron() ) {
+					$notices = new TransientAdminNotices( __CLASS__ . get_current_user_id() );
+					$notices->add( 'wp-content-revision-published', esc_html__( 'Content revision published!', 'wp-content-revisions' ), 'success' );
+					// Redirect to the correct post type.
+					wp_safe_redirect( get_edit_post_link( $originalPostId, '' ) );
+					exit();
+				}
 			}
 		}
 	}

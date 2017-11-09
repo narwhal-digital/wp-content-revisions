@@ -21,11 +21,12 @@
   "scripts": {
     "package-build": [
       "if [ ! -d \"includes\" ]; then mkdir includes; fi",
-      "composer init -d includes -n --require dfwood/wp-post-duplication:@stable --require dfwood/wp-post-revision-meta:@stable",
+      "composer init -d includes -n --require dfwood/wp-post-duplication:@stable --require dfwood/wp-post-meta:@stable --require dfwood/wp-post-revision-meta:@stable --require wpscholar/wp-transient-admin-notices:@stable",
       "composer install -d includes",
       "sed 's/namespace dfwood/namespace Narwhal/g' includes/vendor/dfwood/wp-post-meta/PostMeta.php > includes/wp-post-meta.php",
       "sed 's/namespace dfwood/namespace Narwhal/g' includes/vendor/dfwood/wp-post-duplication/PostDuplication.php > includes/wp-post-duplication.php",
       "sed 's/namespace dfwood/namespace Narwhal/g' includes/vendor/dfwood/wp-post-revision-meta/PostRevisionMeta.php > includes/wp-post-revision-meta.php",
+      "sed 's/namespace wpscholar/namespace Narwhal/g' includes/vendor/wpscholar/wp-transient-admin-notices/TransientAdminNotices.php > includes/wp-transient-admin-notices.php",
       "rm -R includes/composer.* includes/vendor"
     ]
   }

@@ -80,17 +80,17 @@ class PostRevisionMeta {
 		if ( $revision && ( $postId = wp_is_post_revision( $revision ) )
 		     // Prevent this from running twice on the same action.
 		     && add_metadata( 'post', $revisionId, self::META_KEY, true, true ) ) {
-			$excludeKeys = PostMeta::WP_LOCK_KEYS;
-			$excludeKeys[] = self::META_KEY;
+			$exclude = PostMeta::WP_LOCK_KEYS;
+			$exclude[] = self::META_KEY;
 			/**
 			 * Filters meta keys to exclude from copying operations. All non-excluded keys are copied from the post to
 			 * the revision.
 			 *
-			 * @param array $excludeKeys Array of meta keys to exclude from manipulation.
+			 * @param array $exclude Array of meta keys to exclude from manipulation.
 			 * @param int $postId The post ID we are restoring post meta to.
 			 * @param int $revisionId The ID of the revision being restored.
 			 */
-			$excludeKeys = apply_filters( __CLASS__ . '::saveRevisionMetaExcludeKeys', $excludeKeys, $postId, $revisionId );
+			$excludeKeys = apply_filters( __CLASS__ . '::saveRevisionMetaExcludeKeys', $exclude, $postId, $revisionId );
 			PostMeta::copyAllToRevision( $postId, $revisionId, $excludeKeys );
 		}
 	}
@@ -106,19 +106,19 @@ class PostRevisionMeta {
 	 */
 	public static function _maybeRestoreMetaWithRevision( $postId, $revisionId ) {
 		if ( metadata_exists( 'post', $revisionId, self::META_KEY ) ) {
-			$excludeKeys = PostMeta::WP_LOCK_KEYS;
-			$excludeKeys[] = self::META_KEY;
+			$exclude = PostMeta::WP_LOCK_KEYS;
+			$exclude[] = self::META_KEY;
 			/**
 			 * Filters meta keys to exclude from deletion and copying operations.
 			 *
 			 * All non-excluded keys on the post are deleted before copying all non-excluded keys from the revision to
 			 * the post.
 			 *
-			 * @param array $excludeKeys Array of meta keys to exclude from manipulation.
+			 * @param array $exclude Array of meta keys to exclude from manipulation.
 			 * @param int $postId The post ID we are restoring post meta to.
 			 * @param int $revisionId The ID of the revision being restored.
 			 */
-			$excludeKeys = apply_filters( __CLASS__ . '::restoreRevisionMetaExcludeKeys', $excludeKeys, $postId, $revisionId );
+			$excludeKeys = apply_filters( __CLASS__ . '::restoreRevisionMetaExcludeKeys', $exclude, $postId, $revisionId );
 			PostMeta::deleteAll( $postId, $excludeKeys );
 			PostMeta::copyAll( $revisionId, $postId, $excludeKeys );
 		}
@@ -138,7 +138,16 @@ class PostRevisionMeta {
 		     && add_metadata( 'post', $revisionId, self::META_KEY, true, true ) ) {
 			// Ensure our meta key isn't touched.
 			$exclude[] = self::META_KEY;
-			PostMeta::copyAllToRevision( $postId, $revisionId, $exclude );
+			/**
+			 * Filters meta keys to exclude from copying operations. All non-excluded keys are copied from the post to
+			 * the revision.
+			 *
+			 * @param array $exclude Array of meta keys to exclude from manipulation.
+			 * @param int $postId The post ID we are restoring post meta to.
+			 * @param int $revisionId The ID of the revision being restored.
+			 */
+			$excludeKeys = apply_filters( __CLASS__ . '::saveRevisionMetaExcludeKeys', $exclude, $postId, $revisionId );
+			PostMeta::copyAllToRevision( $postId, $revisionId, $excludeKeys );
 		}
 	}
 
@@ -154,8 +163,19 @@ class PostRevisionMeta {
 		if ( metadata_exists( 'post', $revisionId, self::META_KEY ) ) {
 			// Ensure our meta key isn't touched.
 			$exclude[] = self::META_KEY;
-			PostMeta::deleteAll( $postId, $exclude );
-			PostMeta::copyAll( $revisionId, $postId, $exclude );
+			/**
+			 * Filters meta keys to exclude from deletion and copying operations.
+			 *
+			 * All non-excluded keys on the post are deleted before copying all non-excluded keys from the revision to
+			 * the post.
+			 *
+			 * @param array $exclude Array of meta keys to exclude from manipulation.
+			 * @param int $postId The post ID we are restoring post meta to.
+			 * @param int $revisionId The ID of the revision being restored.
+			 */
+			$excludeKeys = apply_filters( __CLASS__ . '::restoreRevisionMetaExcludeKeys', $exclude, $postId, $revisionId );
+			PostMeta::deleteAll( $postId, $excludeKeys );
+			PostMeta::copyAll( $revisionId, $postId, $excludeKeys );
 		}
 	}
 

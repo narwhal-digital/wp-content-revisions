@@ -1,15 +1,4 @@
 <?php
-/**
- * Plugin Name: WP Content Revisions
- * Plugin URI: https://github.com/NarwhalDigital/wp-content-revisions
- * Description: Allows creation of content revisions which allow you to save and preview updates to content without publishing.
- * Author: Narwhal.Digital
- * Author URI: https://narwhal.digital/
- * Version: 1.0.0
- * License: GPLv3
- * License URI: http://www.gnu.org/licenses/gpl-3.0.html
- * Text Domain: wp-content-revisions
- */
 
 namespace Narwhal\WordPress;
 
@@ -34,7 +23,7 @@ class ContentRevisions {
 	 */
 	public function __construct() {
 		// Setup restoration of post meta from revisions.
-		PostRevisionMeta::initialize( true );
+		PostRevisionMeta::setupRestoreFromRevision();
 
 		// Handle publishing of content revisions.
 		add_action( 'transition_post_status', [ __CLASS__, '_maybePublishContentRevision' ], 10, 3 );
@@ -127,7 +116,7 @@ class ContentRevisions {
 	 */
 	public static function _maybePublishContentRevision( $newStatus, $oldStatus, \WP_Post $post ) {
 		// TODO: Add permissions check?
-		if ( 'publish' === $newStatus && $newStatus !== $oldStatus && self::postIsRevision( $post->ID ) ) {
+		if ( 'publish' === $newStatus && self::postIsRevision( $post->ID ) ) {
 			// Delay our actual publish as late as possible. Prevents other
 			// things hooked into the publish process from breaking.
 			add_action( 'wp_insert_post', [ __CLASS__, '_publishContentRevision' ], 99, 2 );
@@ -141,24 +130,26 @@ class ContentRevisions {
 	 * @param \WP_Post $post
 	 */
 	public static function _publishContentRevision( $postId, \WP_Post $post ) {
-		// This action shouldn't be run again unless explicitly requested.
-		remove_action( 'wp_insert_post', [ __CLASS__, '_publishContentRevision' ], 99 );
-
 		if ( 'publish' === $post->post_status && self::postIsRevision( $postId ) ) {
+			// This action shouldn't be run again unless explicitly requested.
+			remove_action( 'wp_insert_post', [ __CLASS__, '_publishContentRevision' ], 99 );
 			$originalPostId = (int) get_post_meta( $post->ID, '_content_revision_parent', true );
 			$originalPost = get_post( $originalPostId );
 			if ( $originalPost ) {
 				// Remove our action
 				remove_action( 'transition_post_status', [ __CLASS__, '_maybePublishContentRevision' ] );
-				// Create an exact revision of the original post as a restore point.
-				PostRevisionMeta::createExactRevision( $originalPostId );
+				// Create revision of our original as a backup.
+				PostRevisionMeta::createExactRevisionWithMeta( $originalPostId );
 				// Copy the content from content revision to original post (including post meta).
 				$args = [
-					'ID'          => $originalPostId,
+					'ID'            => $originalPostId,
+					// Ensure date stays the same.
+					'post_date'     => $originalPost->post_date,
+					'post_date_gmt' => $originalPost->post_date_gmt,
 					// Preserve name (slug) for SEO reasons.
-					'post_name'   => $originalPost->post_name,
+					'post_name'     => $originalPost->post_name,
 					// Preserve the current status of the original.
-					'post_status' => $originalPost->post_status,
+					'post_status'   => $originalPost->post_status,
 				];
 				PostDuplication::duplicate( $post->ID, $args );
 				// Delete our post meta from the original.
@@ -167,7 +158,11 @@ class ContentRevisions {
 				wp_delete_post( $post->ID, true );
 				// Re-add our action.
 				add_action( 'transition_post_status', [ __CLASS__, '_maybePublishContentRevision' ], 10, 3 );
-				// TODO: Add success message and redirect to appropriate page!
+
+				// TODO: Add success message to show after redirect!
+				// Redirect to the correct post type.
+				wp_safe_redirect( get_edit_post_link( $originalPostId, '' ) );
+				exit();
 			}
 		}
 	}

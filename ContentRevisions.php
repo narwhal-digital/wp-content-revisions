@@ -301,7 +301,7 @@ class ContentRevisions {
 	 * @param \WP_Query $query
 	 */
 	public static function _preGetPosts( \WP_Query $query ) {
-		if ( is_admin() ) {
+		if ( is_admin() && function_exists( 'get_current_screen' ) ) {
 			$screen = get_current_screen();
 			if ( $screen && 'edit' === $screen->base && $screen->post_type && self::postTypeSupportsRevisions( $screen->post_type ) ) {
 				$query->set( 'meta_query', [

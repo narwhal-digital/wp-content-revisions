@@ -6,7 +6,7 @@
  * publishing.
  * Author: Narwhal.Digital
  * Author URI: https://narwhal.digital/
- * Version: 1.0.0
+ * Version: 1.0.1
  * License: GPLv3
  * License URI: http://www.gnu.org/licenses/gpl-3.0.html
  * Text Domain: wp-content-revisions

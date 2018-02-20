@@ -1,7 +1,7 @@
 {
   "name": "narwhal-digital/wp-content-revisions",
   "description": "Allows creation of content revisions which allow you to save and preview updates to content without publishing.",
-  "license": "GPLv3",
+  "license": "GPL-3.0+",
   "type": "wordpress-plugin",
   "homepage": "https://github.com/narwhal-digital/wp-content-revisions",
   "authors": [
